@@ -297,11 +297,11 @@ const getDoorClasses = (state: string) => {
 };
 
 interface DoorMachineProps {
-  snapshot?: Snapshot<unknown>;
+  snapshot: Snapshot<unknown> | null;
 }
 function DoorMachine({ snapshot }: DoorMachineProps) {
   const [state, send, machine] = useMachine(doorMachine, {
-    snapshot: snapshot,
+    snapshot: snapshot ?? undefined,
   });
   return (
     <div>
