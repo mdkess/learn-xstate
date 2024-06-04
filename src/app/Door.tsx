@@ -9,6 +9,7 @@ import {
 } from "xstate";
 import classes from "./index.module.css";
 import { useMachine } from "@xstate/react";
+import { useEffect, useState } from "react";
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -352,11 +353,21 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
 }
 
 export default function Door() {
-  return (
-    <DoorMachine
-      snapshot={
-        JSON.parse(localStorage.getItem("door") ?? "{}") as Snapshot<unknown>
-      }
-    />
-  );
+  const [snapshot, setSnapshot] = useState<
+    Snapshot<unknown> | null | undefined
+  >(undefined);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("door");
+    if (stored === null) {
+      setSnapshot(null);
+      return;
+    }
+    setSnapshot(JSON.parse(stored) as Snapshot<unknown>);
+  }, []);
+
+  if (snapshot === undefined) {
+    return <div>Loading...</div>;
+  }
+  return <DoorMachine snapshot={snapshot} />;
 }
