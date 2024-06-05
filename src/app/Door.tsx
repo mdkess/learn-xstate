@@ -92,7 +92,7 @@ const lockMachine = setup({
                 error: ({ event }) => {
                   // TODO: How to type check error?
                   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                  return event.error.message;
+                  return (event.error as Error).message;
                 },
               }),
             },
@@ -129,8 +129,7 @@ const lockMachine = setup({
               target: "idle",
               actions: assign({
                 error: ({ event }) => {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                  return event.error.message;
+                  return (event.error as Error).message;
                 },
               }),
             },
@@ -271,8 +270,7 @@ const doorMachine = setup({
               target: "idle",
               actions: assign({
                 error: ({ event }) => {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                  return event.error.message;
+                  return (event.error as Error).message;
                 },
               }),
             },
@@ -307,8 +305,7 @@ const doorMachine = setup({
               target: "idle",
               actions: assign({
                 error: ({ event }) => {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                  return event.error.message;
+                  return (event.error as Error).message;
                 },
               }),
             },
