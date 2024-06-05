@@ -234,7 +234,7 @@
   top: calc(50% + 20px);
   transform: translateY(-50%);
 }
-.keyhole.locked::after {
+.keyhole.locked.idle::after {
   content: "";
   position: absolute;
   width: 100%;
@@ -245,5 +245,22 @@
   transform: rotate(45deg);
 }
 .keyhole.locked.unlocking::after {
+  content: "";
+  position: absolute;
+  width: 100%;
+  height: 2px;
   background-color: yellow;
+  top: 50%;
+  left: 0;
+  transform: rotate(90deg);
+}
+.keyhole.unlocked.locking::after {
+  content: "";
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background-color: yellow;
+  top: 50%;
+  left: 0;
+  transform: rotate(90deg);
 }

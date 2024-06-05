@@ -6,10 +6,13 @@ import {
   setup,
   type Snapshot,
   type SnapshotFrom,
+  fromPromise,
 } from "xstate";
 import classes from "./index.module.css";
 import { useMachine } from "@xstate/react";
 import { useEffect, useState } from "react";
+
+const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 type LockContext = {
   password: string;
@@ -33,6 +36,24 @@ const lockMachine = setup({
     clearPassword: assign({
       password: "",
     }),
+    clearError: assign({
+      error: "",
+    }),
+  },
+  actors: {
+    lock: fromPromise(async () => {
+      console.log("locking");
+      await wait(1000);
+      if (Math.random() > 0.5) {
+        throw new Error("Couldn't lock (maybe the lock jammed)");
+      }
+    }),
+    unlock: fromPromise(async () => {
+      await wait(1000);
+      if (Math.random() > 0.5) {
+        throw new Error("Couldn't unlock (maybe the lock jammed)");
+      }
+    }),
   },
   guards: {
     isCorrectPassword: ({ context, event }) =>
@@ -46,10 +67,11 @@ const lockMachine = setup({
   },
   states: {
     unlocked: {
+      initial: "idle",
       onDone: {
         target: "locked",
+        actions: ["clearError"],
       },
-      initial: "idle",
       states: {
         idle: {
           on: {
@@ -60,6 +82,25 @@ const lockMachine = setup({
           },
         },
         locking: {
+          invoke: {
+            src: "lock",
+            onDone: {
+              target: "locked",
+            },
+            onError: {
+              target: "idle",
+              actions: assign({
+                error: ({ event }) => {
+                  // TODO: How to type check error?
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                  return event.error.message;
+                },
+              }),
+            },
+          },
+        },
+        locked: {
+          // I'm not sure how to avoid this extra state - if I make locking final, the actor isn't invoked.
           type: "final",
         },
       },
@@ -67,7 +108,7 @@ const lockMachine = setup({
     locked: {
       onDone: {
         target: "unlocked",
-        actions: ["clearPassword"],
+        actions: ["clearPassword", "clearError"],
       },
       initial: "idle",
       states: {
@@ -81,6 +122,23 @@ const lockMachine = setup({
           },
         },
         unlocking: {
+          invoke: {
+            src: "unlock",
+            onDone: {
+              target: "unlocked",
+            },
+            onError: {
+              target: "idle",
+              actions: assign({
+                error: ({ event }) => {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                  return event.error.message;
+                },
+              }),
+            },
+          },
+        },
+        unlocked: {
           type: "final",
         },
       },
@@ -93,6 +151,7 @@ const doorMachine = setup({
     context: {} as {
       lockRef: ActorRefFrom<typeof lockMachine> | null;
       locked: boolean;
+      error: string;
     },
     events: {} as
       | { type: "door.open" }
@@ -119,6 +178,7 @@ const doorMachine = setup({
   context: {
     lockRef: null,
     locked: false,
+    error: "",
   },
   entry: assign({
     lockRef: ({ spawn }) =>
@@ -162,12 +222,18 @@ const doorMachine = setup({
             locked: ({ event }) => {
               return event.snapshot.value.locked !== undefined;
             },
+            error: ({ event }) => {
+              return event.snapshot.context.error;
+            },
           }),
         },
         "xstate.snapshot.unlock": {
           actions: assign({
             locked: ({ event }) => {
               return event.snapshot.value.unlocked !== undefined;
+            },
+            error: ({ event }) => {
+              return event.snapshot.context.error;
             },
           }),
         },
@@ -185,12 +251,8 @@ const getDoorClasses = (state: string) => {
   switch (state) {
     case "closed":
       return classes.door;
-    case "opening":
-      return classes.door + " " + classes.opening;
     case "open":
       return classes.door + " " + classes.open;
-    case "closing":
-      return classes.door + " " + classes.closing;
     default:
       return classes.door;
   }
@@ -203,6 +265,27 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
   const [state, send, machine] = useMachine(doorMachine, {
     snapshot: snapshot ?? undefined,
   });
+  const lockState = state.context.lockRef?.getSnapshot().value;
+  const getLockClasses = (state: typeof lockState) => {
+    if (state?.locked) {
+      if (state.locked == "idle") {
+        return classes.locked + " " + classes.idle;
+      } else if (state.locked === "unlocking") {
+        return classes.locked + " " + classes.unlocking;
+      }
+      return classes.locked;
+    }
+    if (state?.unlocked) {
+      if (state.unlocked == "idle") {
+        return classes.unlocked + " " + classes.idle;
+      } else if (state.unlocked === "locking") {
+        return classes.unlocked + " " + classes.unlocking;
+      }
+      return classes.unlocked;
+    }
+    return "";
+  };
+
   return (
     <div>
       <div className={classes.sceneContainer}>
@@ -210,14 +293,7 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
           <div className={getDoorClasses(state.value)}>
             <div className={classes.doorknob}></div>
             <div
-              className={
-                `${classes.keyhole}` +
-                (state.context.locked
-                  ? ` ${classes.locked}`
-                  : "" + state.value === "unlocking"
-                  ? ` ${classes.unlocking}`
-                  : "")
-              }
+              className={`${classes.keyhole} ${getLockClasses(lockState)}`}
             ></div>
           </div>
         </div>
@@ -246,7 +322,16 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
         </button>
       </div>
       <div>{state.value}</div>
-      <div>{JSON.stringify(state.context)}</div>
+      <div>
+        Password is: {state.context.lockRef?.getSnapshot().context.password}
+      </div>
+      <div
+        style={{
+          color: "red",
+        }}
+      >
+        {state.context.error}
+      </div>
     </div>
   );
 }
