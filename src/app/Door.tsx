@@ -29,7 +29,6 @@ const lockMachine = setup({
   actions: {
     assignPassword: assign({
       password: ({ event }) => {
-        console.log("setting password", event.password);
         return event.password;
       },
     }),
@@ -42,7 +41,6 @@ const lockMachine = setup({
   },
   actors: {
     lock: fromPromise(async () => {
-      console.log("locking");
       await wait(1000);
       if (Math.random() > 0.5) {
         throw new Error("Couldn't lock (maybe the lock jammed)");
@@ -209,7 +207,6 @@ const doorMachine = setup({
           actions: sendTo(
             ({ context }) => context.lockRef!,
             ({ event }) => {
-              console.log(event);
               return {
                 type: "lock.unlock",
                 password: event.password,
@@ -279,7 +276,7 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
       if (state.unlocked == "idle") {
         return classes.unlocked + " " + classes.idle;
       } else if (state.unlocked === "locking") {
-        return classes.unlocked + " " + classes.unlocking;
+        return classes.unlocked + " " + classes.locking;
       }
       return classes.unlocked;
     }
@@ -324,6 +321,9 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
       <div>{state.value}</div>
       <div>
         Password is: {state.context.lockRef?.getSnapshot().context.password}
+      </div>
+      <div>
+        Lock: {JSON.stringify(state.context.lockRef?.getSnapshot().value)}
       </div>
       <div
         style={{
