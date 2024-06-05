@@ -114,7 +114,6 @@ const lockMachine = setup({
           on: {
             "lock.unlock": {
               target: "unlocking",
-              actions: ["clearPassword"],
               guard: "isCorrectPassword",
             },
           },
