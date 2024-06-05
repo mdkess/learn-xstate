@@ -1,281 +1,150 @@
 "use client";
 import {
-  setup,
+  type ActorRefFrom,
   assign,
-  fromPromise,
   sendTo,
-  sendParent,
+  setup,
   type Snapshot,
 } from "xstate";
 import classes from "./index.module.css";
 import { useMachine } from "@xstate/react";
 import { useEffect, useState } from "react";
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 type LockContext = {
   password: string;
   error: string;
-  userPassword: string;
 };
 
 const lockMachine = setup({
   types: {
     context: {} as LockContext,
-    events: {} as { type: "lock.lock" | "lock.unlock"; password: string },
+    events: {} as
+      | { type: "lock.lock"; password: string }
+      | { type: "lock.unlock"; password: string },
+  },
+  actions: {
+    assignPassword: assign({
+      password: ({ event }) => {
+        console.log("setting password", event.password);
+        return event.password;
+      },
+    }),
+    clearPassword: assign({
+      password: "",
+    }),
   },
   guards: {
-    isCorrectPassword: ({ context, event }) => {
-      return event.password === context.password;
-    },
-  },
-  actors: {
-    lock: fromPromise(async () => {
-      await wait(1000);
-      if (Math.random() < 0.2) {
-        throw new Error("The lock is stuck.");
-      }
-    }),
-    unlock: fromPromise(async () => {
-      await wait(1000);
-      if (Math.random() < 0.2) {
-        throw new Error("The lock is stuck.");
-      }
-    }),
+    isCorrectPassword: ({ context, event }) =>
+      context.password === event.password,
   },
 }).createMachine({
   initial: "unlocked",
   context: {
     password: "",
     error: "",
-    userPassword: "",
   },
   states: {
-    locked: {
-      on: {
-        "lock.unlock": {
-          target: "unlocking",
-          guard: "isCorrectPassword",
-        },
-      },
-    },
-    unlocking: {
-      invoke: {
-        src: "unlock",
-        onDone: {
-          target: "unlocked",
-          actions: [
-            sendParent({ type: "lock.unlocked" }),
-            assign({
-              password: "",
-              error: "",
-            }),
-          ],
-        },
-        onError: {
-          target: "locked",
-          actions: [
-            sendParent(({ event }) => {
-              return {
-                type: "lock.error",
-                error: (event.error as { message: string }).message,
-              };
-            }),
-            assign({
-              error: ({ event }) => {
-                return (event.error as { message: string }).message;
-              },
-            }),
-          ],
-        },
-      },
-    },
     unlocked: {
-      on: {
-        "lock.lock": {
-          target: "locking",
-          actions: assign({
-            userPassword: ({ event }) => {
-              return event.password;
+      onDone: {
+        target: "locked",
+      },
+      initial: "idle",
+      states: {
+        idle: {
+          on: {
+            "lock.lock": {
+              target: "locking",
+              actions: ["assignPassword"],
             },
-          }),
+          },
+        },
+        locking: {
+          type: "final",
         },
       },
     },
-    locking: {
-      invoke: {
-        src: "lock",
-        onDone: {
-          target: "locked",
-          actions: [
-            sendParent({ type: "lock.locked" }),
-            assign(({ context }) => {
-              return {
-                password: context.userPassword,
-                userPassword: "",
-                error: "",
-              };
-            }),
-          ],
+    locked: {
+      onDone: {
+        target: "unlocked",
+        actions: ["clearPassword"],
+      },
+      initial: "idle",
+      states: {
+        idle: {
+          on: {
+            "lock.unlock": {
+              target: "unlocking",
+              actions: ["clearPassword"],
+              guard: "isCorrectPassword",
+            },
+          },
         },
-        onError: {
-          target: "unlocked",
-          actions: [
-            sendParent(({ event }) => {
-              return {
-                type: "lock.error",
-                error: (event.error as { message: string }).message,
-              };
-            }),
-            assign({
-              error: ({ event }) => {
-                return (event.error as { message: string }).message;
-              },
-            }),
-          ],
+        unlocking: {
+          type: "final",
         },
       },
     },
   },
 });
 
-type DoorContext = {
-  locked: boolean;
-  error: string;
-};
 const doorMachine = setup({
   types: {
-    context: {} as DoorContext,
+    context: {} as { lockRef: ActorRefFrom<typeof lockMachine> | null },
     events: {} as
       | { type: "door.open" }
       | { type: "door.close" }
       | { type: "door.lock"; password: string }
-      | { type: "door.unlock"; password: string }
-      | { type: "lock.unlocked" }
-      | { type: "lock.locked" }
-      | { type: "lock.error"; error: string },
-  },
-  actors: {
-    lockManager: lockMachine,
-    openDoor: fromPromise(async () => {
-      await wait(1000);
-      if (Math.random() < 0.2) {
-        throw new Error("The door is stuck.");
-      }
-    }),
-    closeDoor: fromPromise(async () => {
-      await wait(1000);
-      if (Math.random() < 0.2) {
-        throw new Error("The door is stuck.");
-      }
-    }),
-  },
-  guards: {
-    isLocked: ({ context }) => {
-      return context.locked;
-    },
-    isUnlocked: ({ context }) => {
-      return !context.locked;
-    },
+      | { type: "door.unlock"; password: string },
   },
 }).createMachine({
   initial: "closed",
   context: {
-    locked: false,
-    error: "",
+    lockRef: null,
   },
-  invoke: {
-    id: "lockManager",
-    src: "lockManager",
-    onDone: {
-      actions: (context, event) => {
-        console.log("lockManager done", context, event);
-      },
-    },
-  },
+  entry: assign({
+    lockRef: ({ spawn }) =>
+      spawn(lockMachine, { id: "lock", syncSnapshot: true }),
+  }),
   states: {
     closed: {
       on: {
-        "lock.unlocked": {
-          actions: assign({
-            locked: false,
-          }),
-        },
-        "lock.locked": {
-          actions: assign({
-            locked: true,
-          }),
+        "door.open": {
+          target: "open",
+          guard: ({ context }) => {
+            if (context.lockRef === null) {
+              return false;
+            }
+            return context.lockRef.getSnapshot().value.unlocked !== undefined;
+          },
         },
         "door.lock": {
-          actions: sendTo("lockManager", ({ event }) => {
-            return { type: "lock.lock", password: event.password };
-          }),
+          actions: sendTo(
+            ({ context }) => context.lockRef!,
+            ({ event }) => {
+              return {
+                type: "lock.lock",
+                password: event.password,
+              };
+            }
+          ),
         },
         "door.unlock": {
-          actions: sendTo("lockManager", ({ event }) => {
-            return { type: "lock.unlock", password: event.password };
-          }),
-        },
-        "door.open": {
-          target: "opening",
-          guard: "isUnlocked",
-        },
-      },
-    },
-    opening: {
-      invoke: {
-        src: "openDoor",
-        onDone: {
-          target: "open",
-          actions: assign({
-            error: "",
-          }),
-        },
-        onError: {
-          target: "closed",
-          actions: assign({
-            error: ({ event }) => {
-              return (event.error as { message: string }).message;
-            },
-          }),
+          actions: sendTo(
+            ({ context }) => context.lockRef!,
+            ({ event }) => {
+              console.log(event);
+              return {
+                type: "lock.unlock",
+                password: event.password,
+              };
+            }
+          ),
         },
       },
     },
     open: {
       on: {
-        "door.close": "closing",
-      },
-    },
-    closing: {
-      invoke: {
-        src: "closeDoor",
-        onDone: {
-          target: "closed",
-          actions: assign({
-            error: "",
-          }),
-        },
-        onError: {
-          target: "open",
-          actions: assign({
-            error: ({ event }) => {
-              return (event.error as { message: string }).message;
-            },
-          }),
-        },
-      },
-    },
-    "*": {
-      on: {
-        "lock.error": {
-          actions: assign({
-            error: ({ event }) => {
-              return event.error;
-            },
-          }),
-        },
+        "door.close": "closed",
       },
     },
   },
