@@ -5,6 +5,7 @@ import {
   sendTo,
   setup,
   type Snapshot,
+  type SnapshotFrom,
 } from "xstate";
 import classes from "./index.module.css";
 import { useMachine } from "@xstate/react";
@@ -89,12 +90,23 @@ const lockMachine = setup({
 
 const doorMachine = setup({
   types: {
-    context: {} as { lockRef: ActorRefFrom<typeof lockMachine> | null },
+    context: {} as {
+      lockRef: ActorRefFrom<typeof lockMachine> | null;
+      locked: boolean;
+    },
     events: {} as
       | { type: "door.open" }
       | { type: "door.close" }
       | { type: "door.lock"; password: string }
-      | { type: "door.unlock"; password: string },
+      | { type: "door.unlock"; password: string }
+      | {
+          type: "xstate.snapshot.lock";
+          snapshot: SnapshotFrom<typeof lockMachine>;
+        }
+      | {
+          type: "xstate.snapshot.unlock";
+          snapshot: SnapshotFrom<typeof lockMachine>;
+        },
     children: {} as {
       lock: "lockMachine";
     },
@@ -106,11 +118,13 @@ const doorMachine = setup({
   initial: "closed",
   context: {
     lockRef: null,
+    locked: false,
   },
   entry: assign({
     lockRef: ({ spawn }) =>
       spawn("lockMachine", { id: "lock", syncSnapshot: true }),
   }),
+
   states: {
     closed: {
       on: {
@@ -145,6 +159,20 @@ const doorMachine = setup({
               };
             }
           ),
+        },
+        "xstate.snapshot.lock": {
+          actions: assign({
+            locked: ({ event }) => {
+              return event.snapshot.value.locked !== undefined;
+            },
+          }),
+          "xstate.snapshot.unlock": {
+            actions: assign({
+              locked: ({ event }) => {
+                return event.snapshot.value.unlocked !== undefined;
+              },
+            }),
+          },
         },
       },
     },
@@ -222,7 +250,6 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
       </div>
       <div>{state.value}</div>
       <div>{JSON.stringify(state.context)}</div>
-      <div style={{ color: "red" }}>{state.context.error}</div>
     </div>
   );
 }
