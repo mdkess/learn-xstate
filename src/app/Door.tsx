@@ -95,6 +95,12 @@ const doorMachine = setup({
       | { type: "door.close" }
       | { type: "door.lock"; password: string }
       | { type: "door.unlock"; password: string },
+    children: {} as {
+      lock: "lockMachine";
+    },
+  },
+  actors: {
+    lockMachine,
   },
 }).createMachine({
   initial: "closed",
@@ -103,7 +109,7 @@ const doorMachine = setup({
   },
   entry: assign({
     lockRef: ({ spawn }) =>
-      spawn(lockMachine, { id: "lock", syncSnapshot: true }),
+      spawn("lockMachine", { id: "lock", syncSnapshot: true }),
   }),
   states: {
     closed: {
