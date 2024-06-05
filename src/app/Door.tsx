@@ -131,10 +131,7 @@ const doorMachine = setup({
         "door.open": {
           target: "open",
           guard: ({ context }) => {
-            if (context.lockRef === null) {
-              return false;
-            }
-            return context.lockRef.getSnapshot().value.unlocked !== undefined;
+            return !context.locked;
           },
         },
         "door.lock": {
@@ -166,13 +163,13 @@ const doorMachine = setup({
               return event.snapshot.value.locked !== undefined;
             },
           }),
-          "xstate.snapshot.unlock": {
-            actions: assign({
-              locked: ({ event }) => {
-                return event.snapshot.value.unlocked !== undefined;
-              },
-            }),
-          },
+        },
+        "xstate.snapshot.unlock": {
+          actions: assign({
+            locked: ({ event }) => {
+              return event.snapshot.value.unlocked !== undefined;
+            },
+          }),
         },
       },
     },
