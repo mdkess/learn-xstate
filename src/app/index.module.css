@@ -201,16 +201,19 @@
   transition: transform 1s ease-in-out;
 }
 
-.door.opening {
+.door.closed.opening {
   transform: rotateY(-20deg);
 }
 
-.door.closing {
+.door.open.closing {
   transform: rotateY(-60deg);
 }
 
 .door.open {
   transform: rotateY(-80deg);
+}
+.door.closed {
+  transform: rotateY(0deg);
 }
 
 .doorknob {

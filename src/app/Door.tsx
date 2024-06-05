@@ -168,8 +168,25 @@ const doorMachine = setup({
       lock: "lockMachine";
     },
   },
+  actions: {
+    clearError: assign({
+      error: "",
+    }),
+  },
   actors: {
     lockMachine,
+    openDoor: fromPromise(async () => {
+      await wait(1000);
+      if (Math.random() > 0.5) {
+        throw new Error("Couldn't open the door (maybe it's stuck)");
+      }
+    }),
+    closeDoor: fromPromise(async () => {
+      await wait(1000);
+      if (Math.random() > 0.5) {
+        throw new Error("Couldn't close the door (maybe it's stuck)");
+      }
+    }),
   },
 }).createMachine({
   initial: "closed",
@@ -206,63 +223,127 @@ const doorMachine = setup({
   },
   states: {
     closed: {
-      on: {
-        "door.open": {
-          target: "open",
-          guard: ({ context }) => {
-            return !context.locked;
+      onDone: {
+        target: "open",
+        actions: ["clearError"],
+      },
+      initial: "idle",
+      states: {
+        idle: {
+          on: {
+            "door.open": {
+              target: "opening",
+              guard: ({ context }) => {
+                return !context.locked;
+              },
+            },
+            "door.lock": {
+              actions: sendTo(
+                ({ context }) => context.lockRef!,
+                ({ event }) => {
+                  return {
+                    type: "lock.lock",
+                    password: event.password,
+                  };
+                }
+              ),
+            },
+            "door.unlock": {
+              actions: sendTo(
+                ({ context }) => context.lockRef!,
+                ({ event }) => {
+                  return {
+                    type: "lock.unlock",
+                    password: event.password,
+                  };
+                }
+              ),
+            },
           },
         },
-        "door.lock": {
-          actions: sendTo(
-            ({ context }) => context.lockRef!,
-            ({ event }) => {
-              return {
-                type: "lock.lock",
-                password: event.password,
-              };
-            }
-          ),
+        opening: {
+          invoke: {
+            src: "openDoor",
+            onDone: {
+              target: "opened",
+            },
+            onError: {
+              target: "idle",
+              actions: assign({
+                error: ({ event }) => {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                  return event.error.message;
+                },
+              }),
+            },
+          },
         },
-        "door.unlock": {
-          actions: sendTo(
-            ({ context }) => context.lockRef!,
-            ({ event }) => {
-              return {
-                type: "lock.unlock",
-                password: event.password,
-              };
-            }
-          ),
+        opened: {
+          type: "final",
         },
       },
     },
     open: {
-      on: {
-        "door.close": "closed",
+      onDone: {
+        target: "closed",
+        actions: ["clearError"],
+      },
+      initial: "idle",
+      states: {
+        idle: {
+          on: {
+            "door.close": {
+              target: "closing",
+            },
+          },
+        },
+        closing: {
+          invoke: {
+            src: "closeDoor",
+            onDone: {
+              target: "closed",
+            },
+            onError: {
+              target: "idle",
+              actions: assign({
+                error: ({ event }) => {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                  return event.error.message;
+                },
+              }),
+            },
+          },
+        },
+        closed: {
+          type: "final",
+        },
       },
     },
   },
 });
 
-const getDoorClasses = (state: string) => {
-  switch (state) {
-    case "closed":
-      return classes.door;
-    case "open":
-      return classes.door + " " + classes.open;
-    default:
-      return classes.door;
-  }
-};
-
 interface DoorMachineProps {
   snapshot: Snapshot<unknown> | null;
 }
+
 function DoorMachine({ snapshot }: DoorMachineProps) {
   const [state, send, machine] = useMachine(doorMachine, {
     snapshot: snapshot ?? undefined,
   });
+  const getDoorClasses = (doorState: typeof state.value) => {
+    if (doorState.open) {
+      if (doorState.open === "closing") {
+        return classes.door + " " + classes.open + " " + classes.closing;
+      }
+      return classes.door + " " + classes.open;
+    }
+    if (doorState.closed) {
+      if (doorState.closed === "opening") {
+        return classes.door + " " + classes.closed + " " + classes.opening;
+      }
+      return classes.door + " " + classes.closed;
+    }
+  };
   const lockState = state.context.lockRef?.getSnapshot().value;
   const getLockClasses = (state: typeof lockState) => {
     if (state?.locked) {
@@ -319,7 +400,7 @@ function DoorMachine({ snapshot }: DoorMachineProps) {
           Save
         </button>
       </div>
-      <div>{state.value}</div>
+      <div>{JSON.stringify(state.value)}</div>
       <div>
         Password is: {state.context.lockRef?.getSnapshot().context.password}
       </div>
