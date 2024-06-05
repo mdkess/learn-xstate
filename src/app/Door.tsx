@@ -19,6 +19,7 @@ type LockContext = {
   error: string;
 };
 
+// BUG: The door can be locked but still able to be opened.
 const lockMachine = setup({
   types: {
     context: {} as LockContext,
@@ -181,7 +182,28 @@ const doorMachine = setup({
     lockRef: ({ spawn }) =>
       spawn("lockMachine", { id: "lock", syncSnapshot: true }),
   }),
-
+  on: {
+    "xstate.snapshot.lock": {
+      actions: assign({
+        locked: ({ event }) => {
+          return event.snapshot.value.locked !== undefined;
+        },
+        error: ({ event }) => {
+          return event.snapshot.context.error;
+        },
+      }),
+    },
+    "xstate.snapshot.unlock": {
+      actions: assign({
+        locked: ({ event }) => {
+          return event.snapshot.value.unlocked !== undefined;
+        },
+        error: ({ event }) => {
+          return event.snapshot.context.error;
+        },
+      }),
+    },
+  },
   states: {
     closed: {
       on: {
@@ -212,26 +234,6 @@ const doorMachine = setup({
               };
             }
           ),
-        },
-        "xstate.snapshot.lock": {
-          actions: assign({
-            locked: ({ event }) => {
-              return event.snapshot.value.locked !== undefined;
-            },
-            error: ({ event }) => {
-              return event.snapshot.context.error;
-            },
-          }),
-        },
-        "xstate.snapshot.unlock": {
-          actions: assign({
-            locked: ({ event }) => {
-              return event.snapshot.value.unlocked !== undefined;
-            },
-            error: ({ event }) => {
-              return event.snapshot.context.error;
-            },
-          }),
         },
       },
     },
