@@ -209,16 +209,6 @@ const doorMachine = setup({
         },
       }),
     },
-    "xstate.snapshot.unlock": {
-      actions: assign({
-        locked: ({ event }) => {
-          return event.snapshot.value.unlocked !== undefined;
-        },
-        error: ({ event }) => {
-          return event.snapshot.context.error;
-        },
-      }),
-    },
   },
   states: {
     closed: {
